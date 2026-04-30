@@ -1,7 +1,8 @@
+package com.university.homework.service;
+
 import com.university.homework.dto.SearchRequestDTO;
 import com.university.homework.repository.HomeworkRepository;
 import com.university.homework.repository.HomeworkSearchRepository;
-import com.university.homework.service.SearchService;
 import com.university.homework.util.SearchQueryBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +14,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
 class SearchServiceTest {
@@ -46,10 +49,10 @@ class SearchServiceTest {
 
     @Test
     void testSearchWithValidFilter() {
-        Assertions.assertNotNull(searchRequest);
-        Assertions.assertEquals("Linear Algebra", searchRequest.getTitle());
-        Assertions.assertEquals(1, searchRequest.getPage());
-        Assertions.assertEquals(20, searchRequest.getPageSize());
+        assertNotNull(searchRequest);
+        assertEquals("Linear Algebra", searchRequest.getTitle());
+        assertEquals(1, searchRequest.getPage());
+        assertEquals(20, searchRequest.getPageSize());
     }
 
     @Test
@@ -61,8 +64,8 @@ class SearchServiceTest {
                 .pageSize(20)
                 .build();
 
-        Assertions.assertNotNull(request.getDateFrom());
-        Assertions.assertNotNull(request.getDateTo());
+        assertNotNull(request.getDateFrom());
+        assertNotNull(request.getDateTo());
     }
 
     @Test
@@ -75,7 +78,7 @@ class SearchServiceTest {
                 .pageSize(20)
                 .build();
 
-        Assertions.assertEquals(3, request.getTags().size());
-        Assertions.assertTrue(request.getTags().contains("math"));
+        assertEquals(3, request.getTags().size());
+        assertTrue(request.getTags().contains("math"));
     }
 }
