@@ -1,0 +1,39 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 60000
+      idle-timeout: 900000
+      max-lifetime: 1800000
+  elasticsearch:
+    rest:
+      uris: ${ELASTICSEARCH_URL}
+  cache:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+
+server:
+  port: 8080
+  compression:
+    enabled: true
+    min-response-size: 1024
+
+logging:
+  level:
+    root: WARN
+    com.university.homework: INFO
+  file:
+    name: /var/log/homework-search-service/app.log
+    max-size: 100MB
+    max-history: 30
+    total-size-cap: 1GB
