@@ -1,6 +1,6 @@
 # Homework Search Microservice
 
-A production-ready Spring Boot microservice for searching and filtering homework in a university homework library system.
+A Spring Boot microservice for searching and filtering homework in a university public homework library system.
 
 ## Features
 
@@ -359,31 +359,3 @@ docker exec homework-db pg_dump -U homework_user homework > backup.sql
 
 # PostgreSQL restore
 docker exec -i homework-db psql -U homework_user homework < backup.sql
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
-
-## Support
-
-For issues and questions:
-- GitHub Issues: https://github.com/DadasahebMoreYou/homework-search-service/issues
-- Email: it-support@university.edu
-
-## Roadmap
-
-- [ ] Advanced caching strategies
-- [ ] Search analytics dashboard
-- [ ] Machine learning-based recommendations
-- [ ] Real-time indexing with Kafka
-- [ ] Multi-language search support
-- [ ] GraphQL API support
