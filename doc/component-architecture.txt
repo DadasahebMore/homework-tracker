@@ -1,0 +1,128 @@
+Component Architecture Diagram
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         COMPONENT ARCHITECTURE                                  │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │                          REST API LAYER                                  │   │
+│  │  ┌─────────────────────────────────────────────────────────────────┐     │   │
+│  │  │ @RestController /api/v1/homework                                │     │   │
+│  │  │ • GET /search - Advanced search with filters                    │     │   │
+│  │  │ • GET /tags - List all available tags                           │     │   │
+│  │  │ • GET /health - Health check endpoint                           │     │   │
+│  │  └─────────────────────────────────────────────────────────────────┘     │   │
+│  └──────────────┬───────────────────────────────────────────────────────────┘   │
+│                 │                                                               │
+│  ┌──────────────▼───────────────────────────────────────────────────────────┐   │
+│  │                        SERVICE LAYER                                     │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ SearchService                                                    │    │   │
+│  │  │ • search(SearchRequestDTO) → SearchResponseDTO                   │    │   │
+│  │  │ • indexHomework(Homework) - Index in Elasticsearch               │    │   │
+│  │  │ • deleteHomework(String) - Delete from index                     │    │   │
+│  │  │                                                                  │    │   │
+│  │  │ @Cacheable(value="homework-search", ttl=60s, hitRate=60%)        │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  │                                                                          │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ TagService                                                       │    │   │
+│  │  │ • getAllActiveTags() → List<TagDTO>                              │    │   │
+│  │  │ @Cacheable(value="tags", ttl=86400s)                             │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  │                                                                          │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ CacheService (implicit via @Cacheable)                           │    │   │
+│  │  │ • Cache Provider: Redis with RedisCacheManager                   │    │   │
+│  │  │ • TTL Strategy: Search (60s), Tags (24h), Custom                 │    │   │
+│  │  │ • Serializer: GenericJackson2JsonRedisSerializer                 │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  └──────────────┬───────────────────────────────────────────────────────────┘   │
+│                 │                                                               │
+│  ┌──────────────▼───────────────────────────────────────────────────────────┐   │
+│  │                        UTILITY LAYER                                     │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ SearchQueryBuilder                                               │    │   │
+│  │  │ • buildSearchSource(SearchRequestDTO) → SearchSourceBuilder      │    │   │
+│  │  │ • buildBoolQuery(SearchRequestDTO) → BoolQueryBuilder            │    │   │
+│  │  │ • buildDateRangeQuery(SearchRequestDTO)                          │    │   │
+│  │  │ • buildFileSizeRangeQuery(SearchRequestDTO)                      │    │   │
+│  │  │ • applySorting(SearchSourceBuilder, SearchRequestDTO)            │    │   │
+│  │  │ • generateCacheKey(SearchRequestDTO)                             │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  └──────────────┬───────────────────────────────────────────────────────────┘   │
+│                 │                                                               │
+│  ┌──────────────▼───────────────────────────────────────────────────────────┐   │
+│  │                      REPOSITORY LAYER                                    │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ HomeworkRepository (JPA)                                         │    │   │
+│  │  │ • findByAuthorIdAndStatus(String, Enum)                          │    │   │
+│  │  │ • findByDateRange(LocalDateTime, LocalDateTime)                  │    │   │
+│  │  │ • countByAuthorIdAndStatus(String, Enum)                         │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ HomeworkSearchRepository (Elasticsearch)                         │    │   │
+│  │  │ • save(HomeworkDocument)                                         │    │   │
+│  │  │ • findById(String) → HomeworkDocument                            │    │   │
+│  │  │ • deleteById(String)                                             │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐    │   │
+│  │  │ TagRepository (JPA)                                              │    │   │
+│  │  │ • findByName(String) → Optional<Tag>                             │    │   │
+│  │  │ • findByActiveTrueOrderByUsageCountDesc()                        │    │   │
+│  │  └──────────────────────────────────────────────────────────────────┘    │   │
+│  └──────────────┬───────────────────────────────────────────────────────────┘   │
+│                 │                                                               │
+│  ┌──────────────▼───────────────────────────────────────────────────────────┐   │
+│  │                     PERSISTENCE LAYER                                    │   │
+│  │                                                                          │   │
+│  │  PostgreSQL (15)           Elasticsearch (8.10)      Redis (7)           │   │
+│  │  ┌────────────────────┐    ┌──────────────────┐   ┌────────────────┐     │   │
+│  │  │ Homework (JPA)     │    │ HomeworkDoc      │   │ Cache Manager  │     │   │
+│  │  ├────────────────────┤    ├──────────────────┤   ├────────────────┤     │   │
+│  │  │ id: UUID           │    │ id (pk)          │   │ Type: Redis    │     │   │
+│  │  │ title: varchar     │    │ title: text      │   │ TTL: Variable  │     │   │
+│  │  │ description: text  │    │ description: text│   │ Hit Rate: 60%  │     │   │
+│  │  │ authorId: varchar  │    │ authorId: keyword│   │ Memory: 256MB  │     │   │
+│  │  │ status: enum       │    │ status: keyword  │   │                │     │   │
+│  │  │ visibility: enum   │    │ visibility: key  │   │ Serializer:    │     │   │
+│  │  │ createdAt: tstamp  │    │ tags: keyword[]  │   │ Jackson JSON   │     │   │
+│  │  │ viewCount: bigint  │    │ attachments:nest │   │                │     │   │
+│  │  │ rating: decimal    │    │ createdAt: date  │   │ Eviction:      │     │   │
+│  │  │                    │    │ rating: double   │   │ LRU            │     │   │
+│  │  │ Indexes:           │    │                  │   │                │     │   │
+│  │  │ • authorId         │    │ Sharding:        │   │ Max Memory:    │     │   │
+│  │  │ • createdAt        │    │ • 20 primary     │   │ Policy:        │     │   │
+│  │  │ • status           │    │ • 2 replicas     │   │ maxmemory-     │     │   │
+│  │  │ • visibility       │    │ • 1s refresh     │   │ policy: allkeys│     │   │
+│  │  │                    │    │ • Routing: _id   │   │ -lru           │     │   │
+│  │  └────────────────────┘    └──────────────────┘   └────────────────┘     │   │
+│  │                                                                          │   │
+│  │  ┌────────────────────┐                                                  │   │
+│  │  │ Attachment (JPA)   │                                                  │   │
+│  │  ├────────────────────┤                                                  │   │
+│  │  │ id: UUID           │    FK: homework_id → Homework                    │   │
+│  │  │ fileName: varchar  │    Cascade: DELETE                               │   │
+│  │  │ fileSize: bigint   │                                                  │   │
+│  │  │ mimeType: varchar  │                                                  │   │
+│  │  │ createdAt: tstamp  │                                                  │   │
+│  │  │ downloadCount:int  │                                                  │   │
+│  │  └────────────────────┘                                                  │   │
+│  │                                                                          │   │
+│  │  ┌────────────────────┐                                                  │   │
+│  │  │ Tag (JPA)          │                                                  │   │
+│  │  ├────────────────────┤                                                  │   │
+│  │  │ id: SERIAL         │    M:M relationship via homework_tags table      │   │
+│  │  │ name: varchar (UQ) │    • homework_id (FK) → Homework                 │   │
+│  │  │ usageCount: bigint │    • tag_id (FK) → Tag                           │   │
+│  │  │ active: boolean    │    Cascade: PERSIST                              │   │
+│  │  └────────────────────┘                                                  │   │
+│  │                                                                          │   │
+│  │  Connection Pool: HikariCP                                               │   │
+│  │  • Max Pool Size: 50 (prod), 10 (dev)                                    │   │
+│  │  • Min Idle: 10 (prod), 2 (dev)                                          │   │
+│  │  • Connection Timeout: 30s                                               │   │
+│  │  • Idle Timeout: 10 min                                                  │   │
+│  │  • Max Lifetime: 30 min                                                  │   │
+│  └────────────────────────────────────���───────────────────────────────────┘   │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘

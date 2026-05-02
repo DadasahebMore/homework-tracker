@@ -2,8 +2,22 @@ package com.university.homework.repository;
 
 import org.springframework.stereotype.Repository;
 
-@Repository
-public interface TagRepository extends org.springframework.data.jpa.repository.JpaRepository<com.university.homework.entity.Tag, Long> {
+import com.university.homework.entity.Tag;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-    java.util.List<com.university.homework.entity.Tag> findByActiveTrueOrderByUsageCountDesc();
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * JPA Repository for Tag entity
+ */
+@Repository
+public interface TagRepository extends JpaRepository<Tag, Long> {
+
+    Optional<Tag> findByName(String name);
+
+    List<Tag> findByActiveTrue();
+
+    List<Tag> findByActiveTrueOrderByUsageCountDesc();
 }

@@ -1,0 +1,140 @@
+Search Request Data Flow
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ USER QUERY                                                                     │
+│ GET /api/v1/homework/search?title=Linear&tags=math,algebra&page=1&pageSize=20  │
+└────────┬───────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ STEP 1: CONTROLLER VALIDATION (SearchController)                               │
+│ ✓ Input Validation (size, format, values)                                      │
+│ ✓ Set Default Values (page=1, pageSize=20)                                     │
+│ ✓ Create SearchRequestDTO                                                      │
+│ ✓ Verify Max Page Size (≤100)                                                  │
+│ Time: <1ms                                                                     │
+└────────┬───────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ STEP 2: REDIS CACHE CHECK                                                      │
+│ CacheKey = MD5(filters + page + pageSize)                                      │
+│ TTL: 60 seconds                                                                │
+│                                                                                │
+│  ┌─────────────────────────────────┐      ┌──────────────────────────────┐     │
+│  │ CACHE HIT (60%)                 │      │ CACHE MISS (40%)             │     │
+│  │ Return cached SearchResponseDTO │      │ Continue to Elasticsearch    │     │
+│  │ Response Time: 5-50ms           │      │ Response Time: 100-300ms     │     │
+│  └─────────────────────────────────┘      └──────────────────────────────┘     │
+│                                                                                │
+│  Outcome: 60% of searches < 50ms | 40% of searches require full search         │
+└────────┬───────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ STEP 3: QUERY BUILDER (SearchQueryBuilder)                                     │
+│                                                                                │
+│ MUST clause:     title:"Linear Algebra" (boost: 2.0, fuzziness: AUTO)          │
+│ FILTER clauses:                                                                │
+│   - tags: ["math", "algebra"] (AND logic - both must match)                    │
+│   - visibility: PUBLIC                                                         │
+│   - status: PUBLISHED                                                          │
+│                                                                                │
+│ Optional Filters (if provided):                                                │
+│   - dateFrom: gte(createdAt)                                                   │
+│   - dateTo: lte(createdAt)                                                     │
+│   - fileSizeMin/Max: range(fileSizeTotal)                                      │
+│   - author: termQuery(authorName.keyword)                                      │
+│   - createdByRole: termsQuery(authorRole)                                      │
+│                                                                                │
+│ Aggregations:                                                                  │
+│   - terms aggregation on tags (50 buckets)                                     │
+│   - terms aggregation on authorName (20 buckets)                               │
+│                                                                                │
+│ Sorting:                                                                       │
+│   - Default: _score DESC, then createdAt DESC                                  │
+│   - date_desc: createdAt DESC                                                  │
+│   - size_asc: fileSizeTotal ASC                                                │
+│                                                                                │
+│ Pagination: from = (page-1) * pageSize, size = pageSize (≤100)                 │
+│                                                                                │
+│ Time: 10-20ms                                                                  │
+└────────┬───────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ STEP 4: ELASTICSEARCH EXECUTION                                                │
+│                                                                                │
+│ ┌─ SHARD SEARCH (Parallel on 20 shards) ─────────────────────────────────┐     │
+│ │                                                                        │     │
+│ │ Shard 1   Shard 2   Shard 3  ...  Shard 20                             │     │
+│ │    │          │          │              │                              │     │
+│ │    └──────────┴──────────┴──────────────┘                              │     │
+│ │                   │                                                    │     │
+│ │                   ▼                                                    │     │
+│ │            QUERY EXECUTION (per shard):                                │     │
+│ │            1. Apply filters (30-40ms per shard)                        │     │
+│ │            2. Score by relevance using TF-IDF                          │     │
+│ │            3. Collect top results per shard                            │     │
+│ │                   │                                                    │     │
+│ │                   ▼                                                    │     │
+│ │            MERGE PHASE:                                                │     │
+│ │            - Collect results from all shards                           │     │
+│ │            - Re-sort across shards                                     │     │
+│ │            - Apply pagination (20 results)                             │     │
+│ │                                                                        │     │
+│ └────────────────────────────────────────────────────────────────────────┘     │
+│                                                                                │
+│ Total ES Time: 50-200ms (dependent on data size and shard distribution)        │
+└────────┬───────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ STEP 5: RESULT PROCESSING & CACHING                                            │
+│                                                                                │
+│ ✓ Convert ES SearchHit → HomeworkResultDTO                                     │
+│ ✓ Extract facets from aggregations                                             │
+│ ✓ Build SearchResponseDTO                                                      │
+│ ✓ Cache in Redis (TTL: 60s)                                                    │
+│ ✓ Calculate execution time                                                     │
+│                                                                                │
+│ Time: 20-50ms                                                                  │
+└────────┬───────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ HTTP RESPONSE (200 OK)                                                         │
+│                                                                                │
+│ {                                                                              │
+│   "success": true,                                                             │
+│   "total": 150,                                                                │
+│   "page": 1,                                                                   │
+│   "perPage": 20,                                                               │
+│   "totalPages": 8,                                                             │
+│   "results": [                                                                 │
+│     {                                                                          │
+│       "id": "hw-001",                                                          │
+│       "title": "Linear Algebra Assignment",                                    │
+│       "author": {"id": "...", "name": "Dr. Smith", "role": "TEACHER"},         │
+│       "tags": ["math", "linear-algebra"],                                      │
+│       "attachments": [{"id": "att-001", "name": "assignment.pdf", ...}],       │
+│       "createdAt": "2026-04-20T10:30:00Z",                                     │
+│       "viewCount": 342,                                                        │
+│       "rating": 4.5,                                                           │
+│       "relevanceScore": 15.67                                                  │
+│     },                                                                         │
+│     ...19 more results...                                                      │
+│   ],                                                                           │
+│   "facets": {                                                                  │
+│     "tags": [{"name": "math", "count": 45}, ...],                              │
+│     "authors": [{"name": "Dr. Smith", "count": 12}, ...]                       │
+│   },                                                                           │
+│   "executionTimeMs": 145,                                                      │
+│   "timestamp": "2026-04-30T12:34:56Z"                                          │
+│ }                                                                              │
+│                                                                                │
+│ TOTAL RESPONSE TIME:                                                           │
+│ ├─ Cache Hit Path:    1-50ms                                                   │
+│ └─ Full Search Path:  145-300ms (< 5 seconds guaranteed)                       │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘

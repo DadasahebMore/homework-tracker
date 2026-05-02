@@ -1,0 +1,83 @@
+# Homework Search Service - Architecture Documentation
+
+## High-Level System Architecture
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                      HOMEWORK SEARCH MICROSERVICE ARCHITECTURE                      │
+│                                                                                     │
+│                                   Users: 27,000+                                    │
+│                                    (Students)                                       │
+│                                        │                                            │
+│                                        ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                    OpenShift Ingress (TLS Termination)                      │    │
+│  │              Load Balancer: Round-Robin / Session Affinity                  │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                        │                                            │
+│                                        ▼                                            │
+│  ┌──────────────────────────────────────────────────────────────────────────────┐   │
+│  │ Spring Boot Microservice (Multiple Replicas: 3-5)                            │   │
+│  │ ┌────────────────────────────────────────────────────────────────────────┐   │   │
+│  │ │                      SearchController                                  │   │   │
+│  │ │  GET /api/v1/homework/search?title=X&tags=Y&page=1&pageSize=20         │   │   │
+│  │ │  GET /api/v1/homework/tags                                             │   │   │
+│  │ │  GET /actuator/health                                                  │   │   │
+│  │ └────────────────────────────────────────────────────────────────────────┘   │   │
+│  │                                    │                                         │   │
+│  │                     ┌──────────────┼──────────────┐                          │   │
+│  │                     ▼              ▼              ▼                          │   │
+│  │              ┌────────────┐  ┌────────────┐ ┌──────────────┐                 │   │
+│  │              │SearchService  │TagService  │ │CacheManager  │                 │   │
+│  │              └────────────┘  └────────────┘ └──────────────┘                 │   │
+│  │                     │              │              │                          │   │
+│  │  ┌──────────────────┼──────────────┼──────────────┤                          │   │
+│  │  ▼                  ▼              ▼              ▼                          │   │
+│  │ ┌──────────────────────────────────────────────────────────────────────┐     │   │
+│  │ │                     Repository Pattern                               │     │   │
+│  │ │  HomeworkRepository (JPA)  │  TagRepository (JPA)                    │     │   │
+│  │ │  HomeworkSearchRepository (Elasticsearch)                            │     │   │
+│  │ └──────────────────────────────────────────────────────────────────────┘     │   │
+│  └──────────────────────────────────────────────────────────────────────────────┘   │
+│                                        │                                            │
+│                    ┌───────────────────┼───────────────────┐                        │
+│                    ▼                   ▼                   ▼                        │
+│  ┌──────────────────────────┐  ┌──────────────────┐  ┌────────────────────────┐     │
+│  │     PostgreSQL 15        │  │  Elasticsearch 8 │  │   Redis 7 (Cache)      │     │
+│  │   (Metadata Storage)     │  │   (Full-Text     │  │ (60-sec TTL)           │     │
+│  │                          │  │    Search Index) │  │ (60% Hit Rate)         │     │
+│  │ ┌─────────────────────┐  │  │                  │  │                        │     │
+│  │ │ Homework Table      │  │  │ 20 Shards        │  │   127.0.0.1:6379       │     │
+│  │ │ - id (UUID)         │  │  │ + 2 Replicas     │  │ Single node (test)     │     │
+│  │ │ - title             │  │  │ + 1s refresh     │  │ Cluster ready (prod)   │     │
+│  │ │ - description       │  │  │                  │  │                        │     │
+│  │ │ - authorId          │  │  │ Mapping:         │  │ Storage: In-Memory     │     │
+│  │ │ - status            │  │  │ - title: text    │  │ Persistence: AOF       │ 	  │
+│  │ │ - visibility        │  │  │ - tags: keyword  │  │                        │     │
+│  │ │ - createdAt         │  │  │ - nested: attach │  │ Max Memory: 256MB      │     │
+│  │ │ - viewCount         │  │  │                  │  │                        │     │
+│  │ ├─────────────────────┤  │  └──────────────────┘  └────────────────────────┘     │
+│  │ │ Attachment Table    │  │                                                       │
+│  │ │ - id                │  │                                                       │
+│  │ │ - homework_id (FK)  │  │                                                       │
+│  │ │ - fileName          │  │                                                       │
+│  │ │ - fileSize          │  │                                                       │
+│  │ │ - mimeType          │  │                                                       │
+│  │ ├─────────────────────┤  │                                                       │
+│  │ │ Tag Table           │  │                                                       │
+│  │ │ - id                │  │                                                       │
+│  │ │ - name              │  │                                                       │
+│  │ │ - usageCount        │  │                                                       │
+│  │ └─────────────────────┘  │                                                       │
+│  │                          │                                                       │
+│  │ Connection Pool:         │                                                       │
+│  │ HikariCP (20-50 conns)   │                                                       │
+│  │ Max Lifetime: 30 min     │                                                       │
+│  └──────────────────────────┘                                                       │
+│                                                                                     │
+│  PERFORMANCE TARGETS:                                                               │
+│  ✓ Search Latency: < 5 seconds (p99)                                                │
+│  ✓ Cache Hit Rate: > 60%                                                            │
+│  ✓ Concurrent Users: 27,000+                                                        │
+│  ✓ Throughput: 1500+ RPS per cluster                                                │
+│  ✓ File Support: up to 1GB per file                                                 │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
