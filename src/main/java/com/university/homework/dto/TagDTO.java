@@ -15,15 +15,15 @@ import lombok.NoArgsConstructor;
 @Schema(description = "Tag response DTO")
 public class TagDTO {
 
-    @Schema(description = "Tag identifier")
-    private Long id;
+  @Schema(description = "Tag identifier")
+  private Long id;
 
-    @Schema(description = "Tag name")
-    private String name;
+  @Schema(description = "Tag name")
+  private String name;
 
-    @Schema(description = "Tag description")
-    private String description;
+  @Schema(description = "Tag description")
+  private String description;
 
-    @Schema(description = "Number of homework items with this tag")
-    private Long usageCount;
+  @Schema(description = "Number of homework items with this tag")
+  private Long usageCount;
 }

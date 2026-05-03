@@ -1,15 +1,13 @@
 package com.university.homework.exception;
 
-/**
- * Custom exception for search-related errors
- */
+/** Custom exception for search-related errors */
 public class SearchException extends RuntimeException {
 
-    public SearchException(String message) {
-        super(message);
-    }
+  public SearchException(String message) {
+    super(message);
+  }
 
-    public SearchException(String message, Throwable cause) {
-        super(message, cause);
-    }
+  public SearchException(String message, Throwable cause) {
+    super(message, cause);
+  }
 }
