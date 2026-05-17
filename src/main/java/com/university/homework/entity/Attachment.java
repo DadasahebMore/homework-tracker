@@ -49,5 +49,5 @@ public class Attachment {
   @Column(nullable = false, updatable = false)
   private LocalDateTime createdAt;
 
-  @Column private Long downloadCount = 0L;
+  @Column @Builder.Default private Long downloadCount = 0L;
 }

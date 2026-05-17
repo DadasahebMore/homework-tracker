@@ -13,7 +13,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 public class SearchFilter {
-
   private String title;
   private String description;
   private String author;
@@ -25,9 +24,4 @@ public class SearchFilter {
   private Long fileSizeMax;
   private List<String> createdByRole;
   private String sortBy; // "relevance", "date_desc", "size_asc"
-
-  @Override
-  public int hashCode() {
-    return toString().hashCode();
-  }
 }

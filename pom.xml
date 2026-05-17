@@ -64,14 +64,6 @@
             <version>9.3.3</version>
             <scope>compile</scope>
         </dependency>
-
-        <dependency>
-            <groupId>org.elasticsearch.client</groupId>
-            <artifactId>elasticsearch-rest-client</artifactId>
-            <version>9.3.3</version>
-            <scope>compile</scope>
-        </dependency>
-
         <!-- Spring Data Redis -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -122,7 +114,6 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
-
         <!-- Spring Boot Actuator -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

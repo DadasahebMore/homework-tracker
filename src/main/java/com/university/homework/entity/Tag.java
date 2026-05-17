@@ -28,8 +28,10 @@ public class Tag {
   private String description;
 
   @Column(nullable = false)
+  @Builder.Default
   private Long usageCount = 0L;
 
   @Column(nullable = false)
+  @Builder.Default
   private Boolean active = true;
 }

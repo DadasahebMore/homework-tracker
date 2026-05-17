@@ -5,7 +5,6 @@ import com.university.homework.entity.Tag;
 import com.university.homework.repository.TagRepository;
 import io.micrometer.core.annotation.Timed;
 import java.util.List;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -25,10 +24,9 @@ public class TagService {
   @Cacheable(value = "tags", unless = "#result.isEmpty()")
   public List<TagDTO> getAllActiveTags() {
     log.debug("Fetching all active tags");
-
     return tagRepository.findByActiveTrueOrderByUsageCountDesc().stream()
         .map(this::convertToDTO)
-        .collect(Collectors.toList());
+        .toList();
   }
 
   private TagDTO convertToDTO(Tag tag) {

@@ -55,6 +55,7 @@ public class Homework {
   private Visibility visibility; // PUBLIC, PRIVATE, RESTRICTED
 
   @OneToMany(mappedBy = "homework", cascade = CascadeType.ALL, orphanRemoval = true)
+  @Builder.Default
   private Set<Attachment> attachments = new HashSet<>();
 
   @ManyToMany(cascade = CascadeType.PERSIST)
@@ -62,6 +63,7 @@ public class Homework {
       name = "homework_tags",
       joinColumns = @JoinColumn(name = "homework_id"),
       inverseJoinColumns = @JoinColumn(name = "tag_id"))
+  @Builder.Default
   private Set<Tag> tags = new HashSet<>();
 
   @CreationTimestamp
@@ -73,9 +75,10 @@ public class Homework {
   private LocalDateTime updatedAt;
 
   @Column(nullable = false)
+  @Builder.Default
   private Long viewCount = 0L;
 
-  @Column private Double rating = 0.0;
+  @Column @Builder.Default private Double rating = 0.0;
 
   public enum HomeworkStatus {
     DRAFT,
