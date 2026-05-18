@@ -29,213 +29,205 @@ import org.springframework.stereotype.Service;
 @Service
 public class SearchService {
 
-    private static final String HOMEWORK_INDEX = "homework";
-    private final RestHighLevelClient elasticsearchClient;
-    private final HomeworkSearchRepository homeworkSearchRepository;
-    private final SearchQueryBuilder queryBuilder;
+  private static final String HOMEWORK_INDEX = "homework";
+  private final RestHighLevelClient elasticsearchClient;
+  private final HomeworkSearchRepository homeworkSearchRepository;
+  private final SearchQueryBuilder queryBuilder;
 
-    public SearchService(
-            RestHighLevelClient elasticsearchClient,
-            HomeworkSearchRepository homeworkSearchRepository,
-            SearchQueryBuilder queryBuilder) {
-        this.elasticsearchClient = elasticsearchClient;
-        this.homeworkSearchRepository = homeworkSearchRepository;
-        this.queryBuilder = queryBuilder;
+  public SearchService(
+      RestHighLevelClient elasticsearchClient,
+      HomeworkSearchRepository homeworkSearchRepository,
+      SearchQueryBuilder queryBuilder) {
+    this.elasticsearchClient = elasticsearchClient;
+    this.homeworkSearchRepository = homeworkSearchRepository;
+    this.queryBuilder = queryBuilder;
+  }
+
+  @Timed(value = "homework.search.duration", description = "Time taken to search homework")
+  @Cacheable(
+      value = "homework-search",
+      key =
+          "T(java.lang.String).format('%s_%s_%d', "
+              + "@com.university.homework.util.SearchQueryBuilder@generateCacheKey(#request), "
+              + "#request.page, #request.pageSize)",
+      unless = "#result.total == 0")
+  public SearchResponseDTO search(SearchRequestDTO request) {
+    log.info("Searching homework with filters: {}", request);
+    long startTime = System.currentTimeMillis();
+    try {
+      // Set defaults, normalize Request
+      normalizeRequest(request);
+
+      // Build Elasticsearch query
+      SearchSourceBuilder sourceBuilder = queryBuilder.buildSearchSource(request);
+      SearchRequest searchRequest = new SearchRequest(HOMEWORK_INDEX);
+      searchRequest.source(sourceBuilder);
+
+      // Execute search
+      SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+
+      // Process and return results
+      SearchResponseDTO result = this.processSearchResponse(response, request, startTime);
+
+      log.info(
+          "Search completed in {} ms, found {} results",
+          System.currentTimeMillis() - startTime,
+          result.getTotal());
+
+      return result;
+
+    } catch (IOException e) {
+      log.error("Error searching homework", e);
+      throw new SearchException("Failed to search homework: " + e.getMessage(), e);
     }
+  }
 
-    @Timed(value = "homework.search.duration", description = "Time taken to search homework")
-    @Cacheable(
-            value = "homework-search",
-            key =
-                    "T(java.lang.String).format('%s_%s_%d', "
-                            + "@com.university.homework.util.SearchQueryBuilder@generateCacheKey(#request), "
-                            + "#request.page, #request.pageSize)",
-            unless = "#result.total == 0")
-    public SearchResponseDTO search(SearchRequestDTO request) {
-        log.info("Searching homework with filters: {}", request);
+  private void normalizeRequest(SearchRequestDTO request) {
+    request.setPage(request.getPage() == null || request.getPage() < 1 ? 1 : request.getPage());
+    request.setPageSize(
+        request.getPageSize() == null || request.getPageSize() < 1
+            ? 20
+            : Math.min(request.getPageSize(), 100));
+    request.setSortBy(request.getSortBy() == null ? "relevance" : request.getSortBy());
+  }
 
-        long startTime = System.currentTimeMillis();
+  private SearchResponseDTO processSearchResponse(
+      SearchResponse response, SearchRequestDTO request, long startTime) {
+    SearchResponseDTO.SearchResponseDTOBuilder builder =
+        SearchResponseDTO.builder()
+            .success(true)
+            .total(Objects.requireNonNull(response.getHits().getTotalHits()).value)
+            .page(request.getPage())
+            .perPage(request.getPageSize())
+            .executionTimeMs(System.currentTimeMillis() - startTime)
+            .timestamp(LocalDateTime.now(ZoneId.of("UTC")));
 
-        try {
-            // Set defaults
-            if (request.getPage() == null || request.getPage() < 1) {
-                request.setPage(1);
-            }
-            if (request.getPageSize() == null || request.getPageSize() < 1) {
-                request.setPageSize(20);
-            }
-            if (request.getSortBy() == null) {
-                request.setSortBy("relevance");
-            }
+    // Calculate total pages
+    long totalPages =
+        (Objects.requireNonNull(response.getHits().getTotalHits()).value
+                + request.getPageSize()
+                - 1)
+            / request.getPageSize();
+    builder.totalPages((int) totalPages);
 
-            // Validate page size
-            if (request.getPageSize() > 100) {
-                request.setPageSize(100);
-            }
+    // Convert hits to DTOs
+    List<SearchResponseDTO.HomeworkResultDTO> results =
+        Arrays.stream(response.getHits().getHits()).map(this::convertSearchHit).toList();
+    builder.results(results);
 
-            // Build Elasticsearch query
-            SearchSourceBuilder sourceBuilder = queryBuilder.buildSearchSource(request);
-            SearchRequest searchRequest = new SearchRequest(HOMEWORK_INDEX);
-            searchRequest.source(sourceBuilder);
+    // Extract facets
+    Map<String, List<SearchResponseDTO.FacetEntryDTO>> facets = extractFacets(response);
+    builder.facets(facets);
 
-            // Execute search
-            SearchResponse response = elasticsearchClient.search(searchRequest, RequestOptions.DEFAULT);
+    return builder.build();
+  }
 
-            // Process and return results
-            SearchResponseDTO result = processSearchResponse(response, request, startTime);
+  private SearchResponseDTO.HomeworkResultDTO convertSearchHit(SearchHit hit) {
+    try {
+      Map<String, Object> source = hit.getSourceAsMap();
 
-            log.info(
-                    "Search completed in {} ms, found {} results",
-                    System.currentTimeMillis() - startTime,
-                    result.getTotal());
+      return SearchResponseDTO.HomeworkResultDTO.builder()
+          .id(hit.getId())
+          .title((String) source.get("title"))
+          .description((String) source.get("description"))
+          .author(
+              SearchResponseDTO.AuthorDTO.builder()
+                  .id((String) source.get("authorId"))
+                  .name((String) source.get("authorName"))
+                  .role((String) source.get("authorRole"))
+                  .build())
+          .tags((List<String>) source.get("tags"))
+          .createdAt((LocalDateTime) source.get("createdAt"))
+          .viewCount(((Number) source.get("viewCount")).longValue())
+          .rating(((Number) source.get("rating")).doubleValue())
+          .relevanceScore(hit.getScore())
+          .build();
 
-            return result;
-
-        } catch (IOException e) {
-            log.error("Error searching homework", e);
-            throw new SearchException("Failed to search homework: " + e.getMessage(), e);
-        }
+    } catch (Exception e) {
+      log.error("Error converting search hit: {}", hit.getId(), e);
+      throw new SearchException("Failed to convert search result", e);
     }
+  }
 
-    private SearchResponseDTO processSearchResponse(
-            SearchResponse response, SearchRequestDTO request, long startTime) {
-        SearchResponseDTO.SearchResponseDTOBuilder builder =
-                SearchResponseDTO.builder()
-                        .success(true)
-                        .total(Objects.requireNonNull(response.getHits().getTotalHits()).value)
-                        .page(request.getPage())
-                        .perPage(request.getPageSize())
-                        .executionTimeMs(System.currentTimeMillis() - startTime)
-                        .timestamp(LocalDateTime.now(ZoneId.of("UTC")));
+  private Map<String, List<SearchResponseDTO.FacetEntryDTO>> extractFacets(
+      SearchResponse response) {
+    Map<String, List<SearchResponseDTO.FacetEntryDTO>> facets = new HashMap<>();
 
-        // Calculate total pages
-        long totalPages =
-                (Objects.requireNonNull(response.getHits().getTotalHits()).value + request.getPageSize() - 1)
-                        / request.getPageSize();
-        builder.totalPages((int) totalPages);
-
-        // Convert hits to DTOs
-        List<SearchResponseDTO.HomeworkResultDTO> results =
-                Arrays.stream(response.getHits().getHits())
-                        .map(this::convertSearchHit)
-                        .toList();
-        builder.results(results);
-
-        // Extract facets
-        Map<String, List<SearchResponseDTO.FacetEntryDTO>> facets = extractFacets(response);
-        builder.facets(facets);
-
-        return builder.build();
-    }
-
-    private SearchResponseDTO.HomeworkResultDTO convertSearchHit(SearchHit hit) {
-        try {
-            Map<String, Object> source = hit.getSourceAsMap();
-
-            return SearchResponseDTO.HomeworkResultDTO.builder()
-                    .id(hit.getId())
-                    .title((String) source.get("title"))
-                    .description((String) source.get("description"))
-                    .author(
-                            SearchResponseDTO.AuthorDTO.builder()
-                                    .id((String) source.get("authorId"))
-                                    .name((String) source.get("authorName"))
-                                    .role((String) source.get("authorRole"))
-                                    .build())
-                    .tags((List<String>) source.get("tags"))
-                    .createdAt(null) // Parse from source if needed
-                    .viewCount(((Number) source.get("viewCount")).longValue())
-                    .rating(((Number) source.get("rating")).doubleValue())
-                    .relevanceScore(hit.getScore())
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Error converting search hit: {}", hit.getId(), e);
-            throw new SearchException("Failed to convert search result", e);
-        }
-    }
-
-    private Map<String, List<SearchResponseDTO.FacetEntryDTO>> extractFacets(
-            SearchResponse response) {
-        Map<String, List<SearchResponseDTO.FacetEntryDTO>> facets = new HashMap<>();
-
-        try {
-            // Extract tags facet
-            if (response.getAggregations() != null) {
-                Terms tagsAgg = response.getAggregations().get("tags_facet");
-                if (tagsAgg != null) {
-                    List<SearchResponseDTO.FacetEntryDTO> tagsList =
-                            tagsAgg.getBuckets().stream()
-                                    .map(
-                                            bucket ->
-                                                    SearchResponseDTO.FacetEntryDTO.builder()
-                                                            .name(bucket.getKeyAsString())
-                                                            .count(bucket.getDocCount())
-                                                            .build())
-                                    .toList();
-                    facets.put("tags", tagsList);
-                }
-
-                // Extract authors facet
-                Terms authorsAgg = response.getAggregations().get("authors_facet");
-                if (authorsAgg != null) {
-                    List<SearchResponseDTO.FacetEntryDTO> authorsList =
-                            authorsAgg.getBuckets().stream()
-                                    .map(
-                                            bucket ->
-                                                    SearchResponseDTO.FacetEntryDTO.builder()
-                                                            .name(bucket.getKeyAsString())
-                                                            .count(bucket.getDocCount())
-                                                            .build())
-                                    .toList();
-                    facets.put("authors", authorsList);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Error extracting facets", e);
+    try {
+      // Extract tags facet
+      if (response.getAggregations() != null) {
+        Terms tagsAgg = response.getAggregations().get("tags_facet");
+        if (tagsAgg != null) {
+          List<SearchResponseDTO.FacetEntryDTO> tagsList =
+              tagsAgg.getBuckets().stream()
+                  .map(
+                      bucket ->
+                          SearchResponseDTO.FacetEntryDTO.builder()
+                              .name(bucket.getKeyAsString())
+                              .count(bucket.getDocCount())
+                              .build())
+                  .toList();
+          facets.put("tags", tagsList);
         }
 
-        return facets;
-    }
-
-    /** Index a homework document in Elasticsearch */
-    public void indexHomework(Homework homework) {
-        try {
-            HomeworkDocument document = convertHomeworkToDocument(homework);
-            homeworkSearchRepository.save(document);
-            log.info("Indexed homework: {}", homework.getId());
-        } catch (Exception e) {
-            log.error("Error indexing homework: {}", homework.getId(), e);
+        // Extract authors facet
+        Terms authorsAgg = response.getAggregations().get("authors_facet");
+        if (authorsAgg != null) {
+          List<SearchResponseDTO.FacetEntryDTO> authorsList =
+              authorsAgg.getBuckets().stream()
+                  .map(
+                      bucket ->
+                          SearchResponseDTO.FacetEntryDTO.builder()
+                              .name(bucket.getKeyAsString())
+                              .count(bucket.getDocCount())
+                              .build())
+                  .toList();
+          facets.put("authors", authorsList);
         }
+      }
+    } catch (Exception e) {
+      log.warn("Error extracting facets", e);
     }
 
-    /** Delete homework document from Elasticsearch */
-    public void deleteHomework(String homeworkId) {
-        try {
-            homeworkSearchRepository.deleteById(homeworkId);
-            log.info("Deleted homework from index: {}", homeworkId);
-        } catch (Exception e) {
-            log.error("Error deleting homework from index: {}", homeworkId, e);
-        }
-    }
+    return facets;
+  }
 
-    private HomeworkDocument convertHomeworkToDocument(Homework homework) {
-        return HomeworkDocument.builder()
-                .id(homework.getId())
-                .title(homework.getTitle())
-                .description(homework.getDescription())
-                .authorId(homework.getAuthorId())
-                .authorName(homework.getAuthorName())
-                .authorRole(homework.getAuthorRole())
-                .status(homework.getStatus().name())
-                .visibility(homework.getVisibility().name())
-                .tags(homework.getTags().stream().map(Tag::getName).toList())
-                .createdAt(homework.getCreatedAt())
-                .updatedAt(homework.getUpdatedAt())
-                .viewCount(homework.getViewCount())
-                .rating(homework.getRating())
-                .build();
+  /** Index a homework document in Elasticsearch */
+  public void indexHomework(Homework homework) {
+    try {
+      HomeworkDocument document = convertHomeworkToDocument(homework);
+      homeworkSearchRepository.save(document);
+      log.info("Indexed homework: {}", homework.getId());
+    } catch (Exception e) {
+      log.error("Error indexing homework: {}", homework.getId(), e);
     }
+  }
+
+  /** Delete homework document from Elasticsearch */
+  public void deleteHomework(String homeworkId) {
+    try {
+      homeworkSearchRepository.deleteById(homeworkId);
+      log.info("Deleted homework from index: {}", homeworkId);
+    } catch (Exception e) {
+      log.error("Error deleting homework from index: {}", homeworkId, e);
+    }
+  }
+
+  private HomeworkDocument convertHomeworkToDocument(Homework homework) {
+    return HomeworkDocument.builder()
+        .id(homework.getId())
+        .title(homework.getTitle())
+        .description(homework.getDescription())
+        .authorId(homework.getAuthorId())
+        .authorName(homework.getAuthorName())
+        .authorRole(homework.getAuthorRole())
+        .status(homework.getStatus().name())
+        .visibility(homework.getVisibility().name())
+        .tags(homework.getTags().stream().map(Tag::getName).toList())
+        .createdAt(homework.getCreatedAt())
+        .updatedAt(homework.getUpdatedAt())
+        .viewCount(homework.getViewCount())
+        .rating(homework.getRating())
+        .build();
+  }
 }
-
-

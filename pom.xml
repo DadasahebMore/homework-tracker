@@ -243,6 +243,19 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <excludes>
+                        <!-- Exclude model classes -->
+                        <exclude>com/university/homework/model/**</exclude>
+                        <!-- Exclude exception classes -->
+                        <exclude>com/university/homework/exception/**</exclude>
+                        <!-- Exclude entity classes -->
+                        <exclude>com/university/homework/entity/**</exclude>
+                        <!-- Exclude config classes -->
+                        <exclude>com/university/homework/config/**</exclude>
+                        <exclude>com/university/homework/dto/**</exclude>
+                    </excludes>
+                </configuration>
             </plugin>
         </plugins>
     </build>

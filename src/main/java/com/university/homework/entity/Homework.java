@@ -26,7 +26,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 @AllArgsConstructor
 @Builder
 public class Homework {
-
   @Id
   @GeneratedValue(strategy = GenerationType.UUID)
   private String id;

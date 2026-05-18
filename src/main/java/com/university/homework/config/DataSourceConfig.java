@@ -42,9 +42,9 @@ public class DataSourceConfig {
   @Setter
   @ConfigurationProperties(prefix = "datasource")
   public static class DatabaseProperties {
-    private String url = "jdbc:postgresql://localhost:5432/homework";
-    private String username = "postgres";
-    private String password = "postgres";
+    private String url ;
+    private String username;
+    private String password ;
     private int maxPoolSize = 20;
     private int minIdle = 5;
     private long connectionTimeout = 30000;

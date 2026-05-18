@@ -53,13 +53,10 @@ public class SearchController {
         @ApiResponse(responseCode = "500", description = "Internal server error")
       })
   public ResponseEntity<SearchResponseDTO> search(@Valid @ModelAttribute SearchRequestDTO request) {
-
     log.info("Search request received: {}", request);
-
     try {
       SearchResponseDTO response = searchService.search(request);
       return ResponseEntity.ok(response);
-
     } catch (Exception e) {
       log.error("Search failed", e);
       SearchResponseDTO errorResponse =

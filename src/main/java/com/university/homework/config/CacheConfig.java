@@ -41,7 +41,9 @@ public class CacheConfig {
                     new GenericJackson2JsonRedisSerializer()))
             .disableCachingNullValues();
 
-    return RedisCacheManager.create(redisConnectionFactory);
+      return RedisCacheManager.builder(redisConnectionFactory)
+              .cacheDefaults(config)
+              .build();
   }
 
   @Getter
